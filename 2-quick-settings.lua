@@ -429,7 +429,7 @@ local function createQuickSettingsPanel(touch_menu)
         end
 
         local fl_label = TextWidget:new{
-            text = _("Frontlight") .. ": " .. tostring(fl.cur),
+            text = _("Brightness") .. ": " .. tostring(fl.cur),
             face = medium_font,
             max_width = inner_width,
         }

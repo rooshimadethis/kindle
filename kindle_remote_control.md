@@ -34,7 +34,12 @@ expect -c 'spawn scp -P 2222 -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+s
 To apply changes, you must kill the existing process and relaunch it.
 1.  **Kill**: `killall luajit`
 2.  **Relaunch (Official)**: `lipc-set-prop com.lab126.appmgrd start app://koreader`
-3.  **Relaunch (Script)**: `cd /mnt/us/koreader && ./koreader.sh &`
+3.  **Relaunch (Script)**: `cd /mnt/us/koreader && nohup ./koreader.sh > /dev/null 2>&1 &`
+
+**Full Automated Restart Command (Reliable)**:
+```bash
+expect -c 'spawn ssh -o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa -p 2222 root@<IP> "killall luajit; killall koreader.sh; cd /mnt/us/koreader && nohup ./koreader.sh > /dev/null 2>&1 &" ; expect "password:" ; send "\r" ; expect eof'
+```
 
 ## 4. Advanced Debugging
 

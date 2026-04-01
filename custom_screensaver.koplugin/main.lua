@@ -1,9 +1,9 @@
 local logger = require("logger")
 local Widget = require("ui/widget/widget")
-local util = require("util")
-local _ = require("gettext")
 
-local CustomScreensaver = Widget:extend{
+local WidgetContainer = require("ui/widget/container/widgetcontainer")
+
+local CustomScreensaver = WidgetContainer:extend{
     name = "custom_screensaver",
 }
 
@@ -16,7 +16,13 @@ local config = {
 
 function CustomScreensaver:getReaderUI()
     local ReaderUI = package.loaded["apps/reader/readerui"]
-    return ReaderUI and ReaderUI.instance
+    if ReaderUI and ReaderUI.instance then return ReaderUI.instance end
+    
+    local UIManager = require("ui/uimanager")
+    if UIManager.main_ui and UIManager.main_ui.getCover then
+        return UIManager.main_ui
+    end
+    return nil
 end
 
 function CustomScreensaver:init()
@@ -25,9 +31,35 @@ function CustomScreensaver:init()
     
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
+    else
+        logger:info("CustomSS: self.ui or self.ui.menu was nil, couldn't register to main menu!")
     end
     
     self:hookScreensaver()
+end
+
+function CustomScreensaver:addToMainMenu(menu_items)
+    local self_ref = self
+    menu_items.custom_screensaver = {
+        text = "Custom Screensaver Overlay",
+        sorting_hint = "tools",
+        sub_item_table = {
+            {
+                text = "Enabled",
+                checked_func = function() return config.enabled end,
+                callback = function()
+                    config.enabled = not config.enabled
+                    self_ref:saveSettings()
+                end,
+            },
+            {
+                text = "Wallpaper Folder",
+                callback = function()
+                    self_ref:showFolderPicker()
+                end,
+            },
+        }
+    }
 end
 
 function CustomScreensaver:loadSettings()
@@ -48,16 +80,14 @@ function CustomScreensaver:getRandomWallpaper()
     local lfs = require("libs/libkoreader-lfs")
     local valid = {}
     
+    logger:info("CustomSS: scanning images")
     local ok, err = pcall(function()
         for f in lfs.dir(config.wallpaper_dir) do
             if f ~= "." and f ~= ".." and not f:match("^%._") then
                 local full_path = config.wallpaper_dir .. "/" .. f
-                local attr = lfs.attributes(full_path)
-                if attr and attr.mode == "file" then
-                    local lower = f:lower()
-                    if lower:match("%.png$") or lower:match("%.jpg$") or lower:match("%.jpeg$") then
-                        table.insert(valid, full_path)
-                    end
+                local lower = f:lower()
+                if lower:match("%.png$") or lower:match("%.jpg$") or lower:match("%.jpeg$") then
+                    table.insert(valid, full_path)
                 end
             end
         end
@@ -82,6 +112,7 @@ function CustomScreensaver:generateScreensaverFB()
     -- Background
     local wp_path = self:getRandomWallpaper()
     if wp_path then
+        logger:info("CustomSS: loading " .. wp_path)
         local s, wp = pcall(BlitBuffer.fromFile, wp_path)
         if s and wp then 
             fb:blitFrom(wp:scale(screen_w, screen_h), 0, 0) 
@@ -90,7 +121,8 @@ function CustomScreensaver:generateScreensaverFB()
 
     -- Cover
     local ui = self:getReaderUI()
-    if ui and ui.document and ui.document.info then
+    if ui and ui.getCover and ui.document then
+        logger:info("CustomSS: overlaying cover")
         local cover_fb = ui:getCover()
         if cover_fb then
             local target_w = screen_w * config.cover_scale
@@ -108,24 +140,24 @@ function CustomScreensaver:generateScreensaverFB()
 end
 
 function CustomScreensaver:hookScreensaver()
-    if self._hooked then return end
-    
     local Screensaver = require("ui/screensaver")
     local Device = require("device")
     local UIManager = require("ui/uimanager")
     local ScreenSaverWidget = require("ui/widget/screensaverwidget")
+    local ImageWidget = require("ui/widget/imagewidget")
     
     local self_ref = self
+    local orig_show = Screensaver.show
     
-    -- Use the reference-recommended wrapMethod for clean hooking
-    self._screensaver_hook = util.wrapMethod(Screensaver, "show", function(ss_self)
-        logger:info("CustomSS: Screensaver triggered")
+    -- Manual Overwrite (Compatible with all versions)
+    Screensaver.show = function(ss_self, ...)
+        logger:info("CustomSS: Suspending screensaver event")
         
         if not config.enabled then 
-            return self_ref._screensaver_hook:raw_call(ss_self) 
+            return orig_show(ss_self, ...) 
         end
         
-        -- Close existing widget if present
+        -- Clean up existing
         if ss_self.screensaver_widget then
             UIManager:close(ss_self.screensaver_widget)
             ss_self.screensaver_widget = nil
@@ -134,10 +166,8 @@ function CustomScreensaver:hookScreensaver()
         Device.screen_saver_mode = true
         local fb = self_ref:generateScreensaverFB()
         
-        local ImageViewer = require("ui/widget/imageviewer")
-        local image_widget = ImageViewer:new{
+        local image_widget = ImageWidget:new{
             image = fb,
-            fullscreen = true,
         }
         
         ss_self.screensaver_widget = ScreenSaverWidget:new {
@@ -148,10 +178,8 @@ function CustomScreensaver:hookScreensaver()
         ss_self.screensaver_widget.dithered = true
         
         UIManager:show(ss_self.screensaver_widget, "full")
-    end)
-    
-    self._hooked = true
-    logger:info("CustomSS: Hook installed using wrapMethod")
+    end
+    logger:info("CustomSS: Hook installed (direct)")
 end
 
 function CustomScreensaver:showFolderPicker()
@@ -161,40 +189,18 @@ function CustomScreensaver:showFolderPicker()
     
     local self_ref = self
     local picker = PathChooser:new{
-        title = _("Select Wallpaper Folder"),
+        title = "Select Wallpaper Folder",
         path = config.wallpaper_dir,
         onConfirm = function(path)
             config.wallpaper_dir = path
             self_ref:saveSettings()
             UIManager:show(InfoMessage:new{
-                text = _("Wallpaper folder updated!"),
+                text = "Wallpaper folder updated!",
             })
         end,
     }
     UIManager:show(picker)
 end
 
-function CustomScreensaver:addToMainMenu(menu_items)
-    local self_ref = self
-    menu_items.custom_screensaver = {
-        text = _("Custom Screensaver Overlay"),
-        sub_item_table = {
-            {
-                text = _("Enabled"),
-                checked_func = function() return config.enabled end,
-                callback = function()
-                    config.enabled = not config.enabled
-                    self_ref:saveSettings()
-                end,
-            },
-            {
-                text = _("Wallpaper Folder"),
-                callback = function()
-                    self_ref:showFolderPicker()
-                end,
-            },
-        }
-    }
-end
 
 return CustomScreensaver

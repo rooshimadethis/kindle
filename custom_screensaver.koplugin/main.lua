@@ -36,6 +36,19 @@ function CustomScreensaver:init()
     end
     
     self:hookScreensaver()
+    
+    local UIManager = require("ui/uimanager")
+    UIManager:scheduleIn(5, function()
+        logger:info("CustomSS: RUNNING AUTOMATED FB GENERATION TEST")
+        local ok, err = pcall(function()
+            self:generateScreensaverFB()
+        end)
+        if not ok then
+            logger:info("CustomSS TEST FATAL ERROR: " .. tostring(err))
+        else
+            logger:info("CustomSS TEST SUCCESS: FB generated safely!")
+        end
+    end)
 end
 
 function CustomScreensaver:addToMainMenu(menu_items)
@@ -108,12 +121,13 @@ function CustomScreensaver:generateScreensaverFB()
     local screen_w = Screen:getWidth()
     local screen_h = Screen:getHeight()
     local fb = BlitBuffer.new(screen_w, screen_h, Screen.bits_per_pixel)
+    fb:fill(BlitBuffer.COLOR_WHITE)
     
     -- Background
     local wp_path = self:getRandomWallpaper()
     if wp_path then
         logger:info("CustomSS: loading " .. wp_path)
-        local s, wp = pcall(BlitBuffer.fromFile, wp_path)
+        local s, wp = pcall(BlitBuffer.fromFile, BlitBuffer, wp_path)
         if s and wp then 
             fb:blitFrom(wp:scale(screen_w, screen_h), 0, 0) 
         end
@@ -125,12 +139,17 @@ function CustomScreensaver:generateScreensaverFB()
         logger:info("CustomSS: overlaying cover")
         local cover_fb = ui:getCover()
         if cover_fb then
-            local target_w = screen_w * config.cover_scale
-            local target_h = (cover_fb.height / cover_fb.width) * target_w
+            local target_w = math.floor(screen_w * config.cover_scale)
+            local target_h = math.floor((cover_fb.height / cover_fb.width) * target_w)
             
             local scaled = cover_fb:scale(target_w, target_h)
-            local x = (screen_w - target_w) / 2
-            local y = (screen_h - target_h) / 2
+            local x = math.floor((screen_w - target_w) / 2)
+            local y = math.floor((screen_h - target_h) / 2)
+            
+            -- Draw shadow offset using a smaller black BlitBuffer
+            local shadow_fb = BlitBuffer.new(target_w, target_h, Screen.bits_per_pixel)
+            shadow_fb:fill(BlitBuffer.COLOR_BLACK)
+            fb:blitFrom(shadow_fb, x + config.shadow_offset, y + config.shadow_offset)
             
             fb:blitFrom(scaled, x, y)
         end

@@ -10,8 +10,8 @@ local CustomScreensaver = WidgetContainer:extend{
 local config = {
     enabled = true,
     wallpaper_dir = "/mnt/us/screensavers/",
-    cover_scale = 0.3,
-    shadow_offset = 10,
+    cover_scale = 0.55,
+    shadow_offset = 12,
 }
 
 function CustomScreensaver:getReaderUI()
@@ -131,10 +131,28 @@ function CustomScreensaver:generateScreensaverFB()
     local wp_path = self:getRandomWallpaper()
     if wp_path then
         logger:info("CustomSS: loading " .. wp_path)
-        local ok, wp = pcall(RenderImage.renderImageFile, RenderImage, wp_path, screen_w, screen_h)
-        if ok and wp then 
-            fb:blitFrom(wp, 0, 0, 0, 0, wp:getWidth(), wp:getHeight()) 
-            wp:free() -- Good habit for big buffers
+        -- Load unscaled to get native dimensions
+        local ok, wp = pcall(RenderImage.renderImageFile, RenderImage, wp_path)
+        if ok and wp then
+            local wp_w = wp:getWidth()
+            local wp_h = wp:getHeight()
+            
+            -- Calculate zoom-to-fill scale (largest ratio to cover entire screen)
+            local scale = math.max(screen_w / wp_w, screen_h / wp_h)
+            local scaled_w = math.floor(wp_w * scale)
+            local scaled_h = math.floor(wp_h * scale)
+            
+            -- Scale it up
+            local ok2, scaled_wp = pcall(RenderImage.scaleBlitBuffer, RenderImage, wp, scaled_w, scaled_h, true)
+            if ok2 and scaled_wp then
+                local src_x = math.floor((scaled_w - screen_w) / 2)
+                local src_y = math.floor((scaled_h - screen_h) / 2)
+                
+                -- Blit exactly the screen's dimensions out of the centered scaled image
+                fb:blitFrom(scaled_wp, 0, 0, src_x, src_y, screen_w, screen_h)
+                scaled_wp:free()
+            end
+            wp:free()
         end
     end
 

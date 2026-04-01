@@ -184,12 +184,13 @@ end
 
 function CustomScreensaver:showFolderPicker()
     local PathChooser = require("ui/widget/pathchooser")
-    local InfoMessage = require("ui/infomessage")
+    local InfoMessage = require("ui/widget/infomessage")
     local UIManager = require("ui/uimanager")
     
     local self_ref = self
     local picker = PathChooser:new{
         title = "Select Wallpaper Folder",
+        select_directory = true,
         path = config.wallpaper_dir,
         onConfirm = function(path)
             config.wallpaper_dir = path

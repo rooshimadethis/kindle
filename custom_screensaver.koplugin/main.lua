@@ -117,6 +117,7 @@ function CustomScreensaver:generateScreensaverFB()
     local Device = require("device")
     local Screen = Device.screen
     local BlitBuffer = require("ffi/blitbuffer")
+    local RenderImage = require("ui/renderimage")
     
     local screen_w = Screen:getWidth()
     local screen_h = Screen:getHeight()
@@ -127,9 +128,10 @@ function CustomScreensaver:generateScreensaverFB()
     local wp_path = self:getRandomWallpaper()
     if wp_path then
         logger:info("CustomSS: loading " .. wp_path)
-        local s, wp = pcall(BlitBuffer.fromFile, BlitBuffer, wp_path)
-        if s and wp then 
-            fb:blitFrom(wp:scale(screen_w, screen_h), 0, 0) 
+        local ok, wp = pcall(RenderImage.renderImageFile, RenderImage, wp_path, screen_w, screen_h)
+        if ok and wp then 
+            fb:blitFrom(wp, 0, 0, 0, 0, wp:getWidth(), wp:getHeight()) 
+            wp:free() -- Good habit for big buffers
         end
     end
 
@@ -140,18 +142,22 @@ function CustomScreensaver:generateScreensaverFB()
         local cover_fb = ui:getCover()
         if cover_fb then
             local target_w = math.floor(screen_w * config.cover_scale)
-            local target_h = math.floor((cover_fb.height / cover_fb.width) * target_w)
+            local target_h = math.floor((cover_fb:getHeight() / cover_fb:getWidth()) * target_w)
             
-            local scaled = cover_fb:scale(target_w, target_h)
-            local x = math.floor((screen_w - target_w) / 2)
-            local y = math.floor((screen_h - target_h) / 2)
-            
-            -- Draw shadow offset using a smaller black BlitBuffer
-            local shadow_fb = BlitBuffer.new(target_w, target_h, Screen.bits_per_pixel)
-            shadow_fb:fill(BlitBuffer.COLOR_BLACK)
-            fb:blitFrom(shadow_fb, x + config.shadow_offset, y + config.shadow_offset)
-            
-            fb:blitFrom(scaled, x, y)
+            local ok, scaled = pcall(RenderImage.scaleBlitBuffer, RenderImage, cover_fb, target_w, target_h, false)
+            if ok and scaled then
+                local x = math.floor((screen_w - scaled:getWidth()) / 2)
+                local y = math.floor((screen_h - scaled:getHeight()) / 2)
+                
+                -- Draw shadow offset using a smaller black BlitBuffer
+                local shadow_fb = BlitBuffer.new(scaled:getWidth(), scaled:getHeight(), Screen.bits_per_pixel)
+                shadow_fb:fill(BlitBuffer.COLOR_BLACK)
+                fb:blitFrom(shadow_fb, x + config.shadow_offset, y + config.shadow_offset, 0, 0, shadow_fb:getWidth(), shadow_fb:getHeight())
+                shadow_fb:free()
+                
+                fb:blitFrom(scaled, x, y, 0, 0, scaled:getWidth(), scaled:getHeight())
+                scaled:free()
+            end
         end
     end
     

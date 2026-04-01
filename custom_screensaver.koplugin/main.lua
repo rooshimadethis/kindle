@@ -38,17 +38,20 @@ function CustomScreensaver:init()
     self:hookScreensaver()
     
     local UIManager = require("ui/uimanager")
-    UIManager:scheduleIn(5, function()
-        logger:info("CustomSS: RUNNING AUTOMATED FB GENERATION TEST")
+    local function runAutomatedTest()
+        logger:info("CustomSS: RUNNING RECURRING AUTOMATED TEST")
         local ok, err = pcall(function()
-            self:generateScreensaverFB()
+            local test_fb = self:generateScreensaverFB()
+            if test_fb then pcall(test_fb.free, test_fb) end
         end)
         if not ok then
             logger:info("CustomSS TEST FATAL ERROR: " .. tostring(err))
         else
             logger:info("CustomSS TEST SUCCESS: FB generated safely!")
         end
-    end)
+        UIManager:scheduleIn(10, runAutomatedTest)
+    end
+    UIManager:scheduleIn(10, runAutomatedTest)
 end
 
 function CustomScreensaver:addToMainMenu(menu_items)
@@ -137,10 +140,10 @@ function CustomScreensaver:generateScreensaverFB()
 
     -- Cover
     local ui = self:getReaderUI()
-    if ui and ui.getCover and ui.document then
+    if ui and ui.document and type(ui.document.getCoverPageImage) == "function" then
         logger:info("CustomSS: overlaying cover")
-        local cover_fb = ui:getCover()
-        if cover_fb then
+        local ok, cover_fb = pcall(ui.document.getCoverPageImage, ui.document)
+        if ok and type(cover_fb) == "cdata" then
             local target_w = math.floor(screen_w * config.cover_scale)
             local target_h = math.floor((cover_fb:getHeight() / cover_fb:getWidth()) * target_w)
             

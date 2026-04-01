@@ -63,3 +63,30 @@ cd /mnt/us/koreader
 *   **Plugins**: `/mnt/us/koreader/plugins/`
 *   **Crash Log**: `/mnt/us/koreader/crash.log`
 *   **System Logs**: `/var/log/messages` (requires root)
+
+## 6. Testing & API Specifics (Advanced)
+
+### Automated Background Testing
+Rather than physically interacting with the device (e.g. pushing the power button to trigger a screensaver event) to test untested graphics code, you can inject a background task inside your `init()` function. Using `pcall` ensures syntax errors won't crash KOReader or put the device into an infinite boot loop.
+```lua
+local UIManager = require("ui/uimanager")
+UIManager:scheduleIn(5, function()
+    local ok, err = pcall(function()
+        -- Triggers the code silently in the background 5 seconds after load
+        self:generateScreensaverFB()
+    end)
+    if not ok then
+        logger:info("TEST FATAL ERROR: " .. tostring(err))
+    end
+end)
+```
+You can view the results instantly via standard SSH log filtering:
+```bash
+expect -c 'spawn ssh -p 2222 root@192.168.1.73 "grep -A 5 '\''TEST'\'' /mnt/us/koreader/crash.log | tail -n 20" ; expect "password:" ; send "\r" ; expect eof'
+```
+
+### BlitBuffer / Rendering Quirks
+*   **Coordinates**: `blitFrom` requires EXACTLY 7 arguments to copy a surface correctly: `canvas:blitFrom(source, dst_x, dst_y, src_x, src_y, src_w, src_h)`. If bounding arguments are missing, KOReader defaults them to 0 and the resulting draw is completely transparent (produces silent white/black screens).
+*   **FFI Structs**: Image buffers (`BlitBuffer`) are LuaJIT C structs, not standard Lua tables. Querying dimensions using `.width` or `.height` will crash the application. Always use the getter methods `:getWidth()` and `:getHeight()`.
+*   **Color Fills**: Use `fb:fill(BlitBuffer.COLOR_WHITE)`. It ONLY accepts a single `color` argument (pre-defined native globals) and applies to the *entire* canvas. To draw rectangles mapped by coordinates, you must create a smaller `BlitBuffer`, fill it, and `blitFrom` it onto the parent canvas.
+*   **Loading JPEGs & PNGs**: Avoid the unstable `BlitBuffer.fromFile` method. Always process external images natively via KOReader's graphics engine: `require("ui/renderimage")` to seamlessly decode, crop, and scale your image without memory faults.

@@ -403,7 +403,7 @@ local function createQuickSettingsPanel(touch_menu)
     local max_btn_width = Screen:scaleBySize(55)
     local slider_gap = Screen:scaleBySize(8) -- doubled gap for more breathing room
     local slider_width = inner_width - 2 * small_btn_width - max_btn_width - 3 * slider_gap
-    local section_span = VerticalSpan:new{ width = Screen:scaleBySize(16) } -- more padding
+    local section_span = VerticalSpan:new{ width = Screen:scaleBySize(4) }
 
     local fl_group = VerticalGroup:new{ align = "center" }
 
@@ -448,7 +448,7 @@ local function createQuickSettingsPanel(touch_menu)
             if fl_progress and fl_progress.setPercentage then
                 fl_progress:setPercentage(fl.cur / fl.max)
             end
-            fl_label:setText(_("Frontlight") .. ": " .. tostring(fl.cur))
+            fl_label:setText(_("Brightness") .. ": " .. tostring(fl.cur))
             UIManager:setDirty(touch_menu.show_parent, "ui")
         end
 
